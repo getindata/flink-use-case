@@ -9,6 +9,6 @@ object FlinkDependecies {
   )
 
   val flinkKafka = Seq(
-    "org.apache.flink" %% "flink-connector-kafka-0.9" % flinkVersion % "provided"
+    "org.apache.flink" %% "flink-connector-kafka-0.9" % flinkVersion
   )
 }

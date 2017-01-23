@@ -10,7 +10,7 @@ import org.rogach.scallop.ScallopConf
 
 object GenerateEventsJob {
 
-  class Conf(args: Array[String]) extends ScallopConf {
+  class Conf(args: Array[String]) extends ScallopConf(args) {
     val maxInterval = opt[Int](required = false, descr = "Maximal interval in millis between two consecutive events",
       default = Some(1000))
     val topic = opt[String](required = false, descr = "Kafka topic to write", default = Some("songs"))
@@ -37,6 +37,8 @@ object GenerateEventsJob {
       kafkaProperties(conf.kafkaBroker()))
 
     stream.addSink(kafkaProducer)
+
+    env.execute("Generate events")
   }
 
   private def getSerializationSchema(env: StreamExecutionEnvironment) = {
