@@ -1,63 +1,80 @@
 package com.getindata
 
-import org.apache.flink.util.Collector
 import org.scalatest.{Matchers, WordSpec}
 
 class FlinkProcessingJobTest extends WordSpec with Matchers {
 
 
-  class CollectorMock extends Collector[ContinousListening] {
+  class CollectorMock {
 
-    var innerCollection: Seq[ContinousListening] = Seq()
+    var innerCollection: Seq[Iterable[Event]] = Seq()
 
-    override def collect(record: ContinousListening): Unit = innerCollection :+= record
+    def collect(record: Iterable[Event]): Unit = innerCollection :+= record
 
-    override def close(): Unit = ???
   }
+
+  val splitPredicate: Event => Boolean = _.isInstanceOf[SearchEvent]
 
   "mapToSubSession" should {
     "not produce any results for only search events" in {
       val mock = new CollectorMock
-      FlinkProcessingJob.mapToSubSession("1", mock, Seq(SearchEvent(1L, "1", EventType.NextSong, DeviceType.Desktop)))
+      FlinkProcessingJob.mapToSubSession(Seq(SearchEvent(1L, "1", EventType.NextSong, DeviceType.Desktop)),
+        splitPredicate,
+        mock.collect)
       mock.innerCollection should be(Seq())
     }
 
     "produce one subsession" in {
       val mock = new CollectorMock
-      FlinkProcessingJob.mapToSubSession("1", mock, Seq(
+      FlinkProcessingJob.mapToSubSession(Seq(
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "2"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "4"),
         SearchEvent(1L, "1", EventType.NextSong, DeviceType.Desktop)
+      ), splitPredicate, mock.collect)
+      mock.innerCollection should be(Seq(Seq(
+        SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "2"),
+        SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
+        SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "4"))
       ))
-      mock.innerCollection should be(Seq(ContinousListening("1", 3)))
     }
 
     "produce subsession when starts with next" in {
       val mock = new CollectorMock
-      FlinkProcessingJob.mapToSubSession("1", mock, Seq(
+      FlinkProcessingJob.mapToSubSession(Seq(
         SearchEvent(1L, "1", EventType.NextSong, DeviceType.Desktop),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "2"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "4")
+      ), splitPredicate, mock.collect)
+      mock.innerCollection should be(Seq(Seq(
+        SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "2"),
+        SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
+        SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "4"))
       ))
-      mock.innerCollection should be(Seq(ContinousListening("1", 3)))
     }
 
     "produce multiple subsession" in {
       val mock = new CollectorMock
-      FlinkProcessingJob.mapToSubSession("1", mock, Seq(
+      FlinkProcessingJob.mapToSubSession(Seq(
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "2"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
         SearchEvent(1L, "1", EventType.NextSong, DeviceType.Desktop),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "4")
+      ), splitPredicate, mock.collect)
+      mock.innerCollection should be(Seq(
+        Seq(
+          SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "2"),
+          SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
+          SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3")
+        ),
+        Seq(
+          SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
+          SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "4")
+        )
       ))
-      mock.innerCollection should be(Seq(ContinousListening("1", 3), ContinousListening("1", 2)))
     }
-
-
   }
-
 }

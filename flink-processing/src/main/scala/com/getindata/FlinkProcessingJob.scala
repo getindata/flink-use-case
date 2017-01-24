@@ -1,7 +1,7 @@
 package com.getindata
 
+import java.time.Duration
 import java.util.Properties
-import java.util.concurrent.TimeUnit
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.TimeCharacteristic
@@ -18,7 +18,6 @@ import org.rogach.scallop.ScallopConf
 
 import scala.annotation.tailrec
 import scala.collection.Iterable
-import scala.concurrent.duration.Duration
 
 object FlinkProcessingJob {
 
@@ -36,21 +35,18 @@ object FlinkProcessingJob {
     properties
   }
 
-  @tailrec def mapToSubSession(key: String,
-                               out: Collector[ContinousListening],
-                               l: Iterable[Event]): Unit = {
-    val produceSubsession: (Iterable[Event]) => Unit = (events) => {
-      val size = events.count(_.isInstanceOf[SongEvent])
-      if (size > 0) {
-        out.collect(ContinousListening(key, size))
-      }
-    }
-
-    l.span(!_.isInstanceOf[SearchEvent]) match {
-      case (x, y) if y.isEmpty => produceSubsession(x)
+  @tailrec def mapToSubSession(l: Iterable[Event],
+                               splitPredicate: Event => Boolean,
+                               produceSubsession: Iterable[Event] => Unit
+                              ): Unit = {
+    l.span(!splitPredicate(_)) match {
+      case (Nil, Nil) =>
+      case (x, Nil) => produceSubsession(x)
+      case (Nil, (y :: ys)) =>
+        mapToSubSession(ys, splitPredicate, produceSubsession)
       case (x, (y :: ys)) =>
         produceSubsession(x)
-        mapToSubSession(key, out, ys)
+        mapToSubSession(ys, splitPredicate, produceSubsession)
     }
 
   }
@@ -71,6 +67,8 @@ object FlinkProcessingJob {
 
     val kafkaEvents = env.addSource(kafkaConsumer).name("Read events from Kafka")
 
+    //#1 Count session length in seconds and songs
+
     kafkaEvents.map(_ match {
       case x: SongEvent => (x.userId, x.timestamp, x.timestamp, 1)
       case x: SearchEvent => (x.userId, x.timestamp, x.timestamp, 0)
@@ -79,18 +77,57 @@ object FlinkProcessingJob {
       .reduce((e1, e2) => (e1._1, math.min(e1._2, e2._2), math.max(e1._3, e2._3), e1._4 + e2._4))
       .name("Count sessions length")
       .map(e => s"User: ${e._1} session took ${
-        Duration.create(e._3 - e._2,
-          TimeUnit.MILLISECONDS).toSeconds
+        Duration.ofMillis(e._3 - e._2).getSeconds
       } seconds and ${e._4} songs.").print().name("Write to console")
 
-    val windowFunction: (String, TimeWindow, Iterable[Event], Collector[ContinousListening]) => Unit =
+    //#2 Count consecutive DiscoverWeekly session length in seconds and songs
+
+    val windowFunction1: (String, TimeWindow, Iterable[Event], Collector[ContinousDiscoverWeekly]) => Unit =
       (key, window, in, out) => {
-        mapToSubSession(key, out, in)
+
+        val produceSubsession: (Iterable[Event]) => Unit = (events) => {
+          val size = events.size
+          val timestamps = events.map(_.timestamp)
+          if (size > 0) {
+            out.collect(ContinousDiscoverWeekly(key,
+              Duration.ofMillis(timestamps.max - timestamps.min).getSeconds,
+              size))
+          }
+        }
+
+        mapToSubSession(in, {
+          case _: SearchEvent => true
+          case SongEvent(_, _, _, _, p, _) if p != PlaylistType.DiscoverWeekly => true
+          case _ => false
+        }, produceSubsession)
       }
 
     kafkaEvents.keyBy(_.userId)
       .window(EventTimeSessionWindows.withGap(Time.seconds(conf.sessionGap())))
-      .apply(windowFunction)
+      .apply(windowFunction1)
+      .name("Count discover weekly subsessions statistics")
+      .map(s =>
+        s"""UserId ${s.userId} listened ${s.count} songs for ${s.length} seconds consecutively from Discover Weekly""")
+      .print()
+
+    //#3 Count songs until next or search clicked
+
+    val windowFunction2: (String, TimeWindow, Iterable[Event], Collector[ContinousListening]) => Unit =
+      (key, window, in, out) => {
+
+        val produceSubsession: (Iterable[Event]) => Unit = (events) => {
+          val size = events.size
+          if (size > 0) {
+            out.collect(ContinousListening(key, size))
+          }
+        }
+
+        mapToSubSession(in, e => e.isInstanceOf[SearchEvent], produceSubsession)
+      }
+
+    kafkaEvents.keyBy(_.userId)
+      .window(EventTimeSessionWindows.withGap(Time.seconds(conf.sessionGap())))
+      .apply(windowFunction2)
       .name("Count subsessions statistics")
       .map(s => s"UserId ${s.userId} listened ${s.count} songs consecutively")
       .print()
