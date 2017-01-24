@@ -36,7 +36,7 @@ object GenerateEventsJob {
       serializationSchema,
       kafkaProperties(conf.kafkaBroker()))
 
-    stream.addSink(kafkaProducer)
+    stream.addSink(kafkaProducer).name("Write to kafka")
 
     env.execute("Generate events")
   }

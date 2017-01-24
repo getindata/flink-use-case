@@ -10,10 +10,14 @@ import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.watermark.Watermark
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows
 import org.apache.flink.streaming.api.windowing.time.Time
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer09
 import org.apache.flink.streaming.util.serialization.TypeInformationSerializationSchema
+import org.apache.flink.util.Collector
 import org.rogach.scallop.ScallopConf
 
+import scala.annotation.tailrec
+import scala.collection.Iterable
 import scala.concurrent.duration.Duration
 
 object FlinkProcessingJob {
@@ -32,6 +36,25 @@ object FlinkProcessingJob {
     properties
   }
 
+  @tailrec def mapToSubSession(key: String,
+                               out: Collector[ContinousListening],
+                               l: Iterable[Event]): Unit = {
+    val produceSubsession: (Iterable[Event]) => Unit = (events) => {
+      val size = events.count(_.isInstanceOf[SongEvent])
+      if (size > 0) {
+        out.collect(ContinousListening(key, size))
+      }
+    }
+
+    l.span(!_.isInstanceOf[SearchEvent]) match {
+      case (x, y) if y.isEmpty => produceSubsession(x)
+      case (x, (y :: ys)) =>
+        produceSubsession(x)
+        mapToSubSession(key, out, ys)
+    }
+
+  }
+
   def main(args: Array[String]): Unit = {
     val conf = new Conf(args)
     val env = StreamExecutionEnvironment.getExecutionEnvironment
@@ -46,7 +69,9 @@ object FlinkProcessingJob {
 
     kafkaConsumer.assignTimestampsAndWatermarks(watermakAssigner)
 
-    env.addSource(kafkaConsumer).name("Read events from Kafka").map(_ match {
+    val kafkaEvents = env.addSource(kafkaConsumer).name("Read events from Kafka")
+
+    kafkaEvents.map(_ match {
       case x: SongEvent => (x.userId, x.timestamp, x.timestamp, 1)
       case x: SearchEvent => (x.userId, x.timestamp, x.timestamp, 0)
     }).name("Change to tuple").keyBy(0)
@@ -57,6 +82,19 @@ object FlinkProcessingJob {
         Duration.create(e._3 - e._2,
           TimeUnit.MILLISECONDS).toSeconds
       } seconds and ${e._4} songs.").print().name("Write to console")
+
+    val windowFunction: (String, TimeWindow, Iterable[Event], Collector[ContinousListening]) => Unit =
+      (key, window, in, out) => {
+        mapToSubSession(key, out, in)
+      }
+
+    kafkaEvents.keyBy(_.userId)
+      .window(EventTimeSessionWindows.withGap(Time.seconds(conf.sessionGap())))
+      .apply(windowFunction)
+      .name("Count subsessions statistics")
+      .map(s => s"UserId ${s.userId} listened ${s.count} songs consecutively")
+      .print()
+
 
     env.execute("Session length")
 
