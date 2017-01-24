@@ -7,13 +7,13 @@ class FlinkProcessingJobTest extends WordSpec with Matchers {
 
   class CollectorMock {
 
-    var innerCollection: Seq[Iterable[Event]] = Seq()
+    var innerCollection: Seq[Iterable[UserEvent]] = Seq()
 
-    def collect(record: Iterable[Event]): Unit = innerCollection :+= record
+    def collect(record: Iterable[UserEvent]): Unit = innerCollection :+= record
 
   }
 
-  val splitPredicate: Event => Boolean = _.isInstanceOf[SearchEvent]
+  val splitPredicate: UserEvent => Boolean = _.isInstanceOf[SearchEvent]
 
   "mapToSubSession" should {
     "not produce any results for only search events" in {

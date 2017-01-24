@@ -35,9 +35,9 @@ object FlinkProcessingJob {
     properties
   }
 
-  @tailrec def mapToSubSession(l: Iterable[Event],
-                               splitPredicate: Event => Boolean,
-                               produceSubsession: Iterable[Event] => Unit
+  @tailrec def mapToSubSession(l: Iterable[UserEvent],
+                               splitPredicate: UserEvent => Boolean,
+                               produceSubsession: Iterable[UserEvent] => Unit
                               ): Unit = {
     l.span(!splitPredicate(_)) match {
       case (Nil, Nil) =>
@@ -50,6 +50,41 @@ object FlinkProcessingJob {
     }
 
   }
+
+  val countDiscoverWeekly: (String, TimeWindow, Iterable[UserEvent], Collector[ContinousDiscoverWeekly]) => Unit =
+    (key, window, in, out) => {
+
+      val produceSubsession: (Iterable[UserEvent]) => Unit = (events) => {
+        val size = events.size
+        val timestamps = events.map(_.timestamp)
+        if (size > 0) {
+          out.collect(ContinousDiscoverWeekly(key,
+            Duration.ofMillis(timestamps.last - timestamps.head).getSeconds,
+            size))
+        }
+      }
+
+      val sorted = in.toList.sortBy(_.timestamp)
+      mapToSubSession(sorted, {
+        case _: SearchEvent => true
+        case SongEvent(_, _, _, _, p, _) if p != PlaylistType.DiscoverWeekly => true
+        case _ => false
+      }, produceSubsession)
+    }
+
+  val countSubSessions: (String, TimeWindow, Iterable[UserEvent], Collector[ContinousListening]) => Unit =
+    (key, window, in, out) => {
+
+      val produceSubsession: (Iterable[UserEvent]) => Unit = (events) => {
+        val size = events.size
+        if (size > 0) {
+          out.collect(ContinousListening(key, size))
+        }
+      }
+
+      val sorted = in.toList.sortBy(_.timestamp)
+      mapToSubSession(in, e => e.isInstanceOf[SearchEvent], produceSubsession)
+    }
 
   def main(args: Array[String]): Unit = {
     val conf = new Conf(args)
@@ -65,7 +100,7 @@ object FlinkProcessingJob {
 
     kafkaConsumer.assignTimestampsAndWatermarks(watermakAssigner)
 
-    val kafkaEvents = env.addSource(kafkaConsumer).name("Read events from Kafka")
+    val kafkaEvents = env.addSource(kafkaConsumer).map(_.asInstanceOf[UserEvent]).name("Read events from Kafka")
 
     //#1 Count session length in seconds and songs
 
@@ -82,29 +117,9 @@ object FlinkProcessingJob {
 
     //#2 Count consecutive DiscoverWeekly session length in seconds and songs
 
-    val windowFunction1: (String, TimeWindow, Iterable[Event], Collector[ContinousDiscoverWeekly]) => Unit =
-      (key, window, in, out) => {
-
-        val produceSubsession: (Iterable[Event]) => Unit = (events) => {
-          val size = events.size
-          val timestamps = events.map(_.timestamp)
-          if (size > 0) {
-            out.collect(ContinousDiscoverWeekly(key,
-              Duration.ofMillis(timestamps.max - timestamps.min).getSeconds,
-              size))
-          }
-        }
-
-        mapToSubSession(in, {
-          case _: SearchEvent => true
-          case SongEvent(_, _, _, _, p, _) if p != PlaylistType.DiscoverWeekly => true
-          case _ => false
-        }, produceSubsession)
-      }
-
     kafkaEvents.keyBy(_.userId)
       .window(EventTimeSessionWindows.withGap(Time.seconds(conf.sessionGap())))
-      .apply(windowFunction1)
+      .apply(countDiscoverWeekly)
       .name("Count discover weekly subsessions statistics")
       .map(s =>
         s"""UserId ${s.userId} listened ${s.count} songs for ${s.length} seconds consecutively from Discover Weekly""")
@@ -112,22 +127,9 @@ object FlinkProcessingJob {
 
     //#3 Count songs until next or search clicked
 
-    val windowFunction2: (String, TimeWindow, Iterable[Event], Collector[ContinousListening]) => Unit =
-      (key, window, in, out) => {
-
-        val produceSubsession: (Iterable[Event]) => Unit = (events) => {
-          val size = events.size
-          if (size > 0) {
-            out.collect(ContinousListening(key, size))
-          }
-        }
-
-        mapToSubSession(in, e => e.isInstanceOf[SearchEvent], produceSubsession)
-      }
-
     kafkaEvents.keyBy(_.userId)
       .window(EventTimeSessionWindows.withGap(Time.seconds(conf.sessionGap())))
-      .apply(windowFunction2)
+      .apply(countSubSessions)
       .name("Count subsessions statistics")
       .map(s => s"UserId ${s.userId} listened ${s.count} songs consecutively")
       .print()
@@ -139,8 +141,8 @@ object FlinkProcessingJob {
   }
 
   private val watermakAssigner = new AssignerWithPunctuatedWatermarks[Event] {
-    override def checkAndGetNextWatermark(lastElement: Event,
-                                          extractedTimestamp: Long) = new Watermark(extractedTimestamp)
+    override def checkAndGetNextWatermark(lastElement: Event, extractedTimestamp: Long) =
+      if (lastElement.isWatermark) {new Watermark(extractedTimestamp)} else {null}
 
     override def extractTimestamp(element: Event, previousElementTimestamp: Long) = element.timestamp
   }

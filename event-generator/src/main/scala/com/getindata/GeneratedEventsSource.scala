@@ -8,18 +8,19 @@ import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceCont
 
 import scala.util.Random
 
-class GeneratedEventsSource(private val maxInterval: Int) extends RichParallelSourceFunction[Event] {
+class GeneratedEventsSource(private val maxInterval: Long,
+                            private val maxTimeDeviation: Long) extends RichParallelSourceFunction[UserEvent] {
 
   @volatile private var isRunning = true
 
-  private val users = (1 to 10).map(_ => UUID.randomUUID().toString)
+  private val users = (1 to 30).map(_ => UUID.randomUUID().toString)
   private val songs = (1 to 20).map(_ => UUID.randomUUID().toString)
 
   override def cancel(): Unit = isRunning = false
 
   private def chooseEvent() = {
     val eventType = Random.nextDouble() match {
-      case x if x > 0.5 => EventType.EndSong
+      case x if x > 0.3 => EventType.EndSong
       case x if x > 0.1 => EventType.NextSong
       case _ => EventType.SearchSong
     }
@@ -36,8 +37,8 @@ class GeneratedEventsSource(private val maxInterval: Int) extends RichParallelSo
     eventType match {
       case EventType.EndSong =>
         val playlistType = Random.nextDouble() match {
-          case x if x > 0.6 => PlaylistType.DiscoverWeekly
-          case x if x > 0.2 => PlaylistType.DailyMix
+          case x if x > 0.3 => PlaylistType.DiscoverWeekly
+          case x if x > 0.1 => PlaylistType.DailyMix
           case _ => PlaylistType.ChillHits
         }
         val songId = songs(Random.nextInt(songs.length))
@@ -47,9 +48,11 @@ class GeneratedEventsSource(private val maxInterval: Int) extends RichParallelSo
 
   }
 
-  private def chooseTimestamp() = Instant.now.toEpochMilli
+  private def chooseTimestamp() = Instant.now
+    .plusMillis((Random.nextDouble() * 2 * maxTimeDeviation - maxTimeDeviation).toLong)
+    .toEpochMilli
 
-  override def run(ctx: SourceContext[Event]): Unit = {
+  override def run(ctx: SourceContext[UserEvent]): Unit = {
     while (isRunning) {
       val event = chooseEvent()
       ctx.collect(event)

@@ -11,10 +11,13 @@ import org.rogach.scallop.ScallopConf
 object GenerateEventsJob {
 
   class Conf(args: Array[String]) extends ScallopConf(args) {
-    val maxInterval = opt[Int](required = false, descr = "Maximal interval in millis between two consecutive events",
-      default = Some(1000))
+    val maxInterval = opt[Long](required = false, descr = "Maximal interval in millis between two consecutive events",
+      default = Some(1000L))
     val topic = opt[String](required = false, descr = "Kafka topic to write", default = Some("songs"))
     val kafkaBroker = trailArg[String](required = true, descr = "Kafka broker list")
+    val maxTimeDeviation = opt[Long](required = false,
+      descr = "Maximal deviation from current time while assigning event timestamp",
+      default = Some(0L))
 
     verify()
   }
@@ -29,10 +32,11 @@ object GenerateEventsJob {
     val conf = new Conf(args)
 
     val env = StreamExecutionEnvironment.getExecutionEnvironment
-    val stream = env.addSource(new GeneratedEventsSource(conf.maxInterval())).name("Event generator")
+    val stream = env.addSource(new GeneratedEventsSource(conf.maxInterval(), conf.maxTimeDeviation()))
+      .name("Event generator")
 
     val serializationSchema = getSerializationSchema(env)
-    val kafkaProducer = new FlinkKafkaProducer09[Event](conf.topic(),
+    val kafkaProducer = new FlinkKafkaProducer09[UserEvent](conf.topic(),
       serializationSchema,
       kafkaProperties(conf.kafkaBroker()))
 
@@ -42,6 +46,6 @@ object GenerateEventsJob {
   }
 
   private def getSerializationSchema(env: StreamExecutionEnvironment) = {
-    new TypeInformationSerializationSchema[Event](TypeInformation.of(classOf[Event]), env.getConfig)
+    new TypeInformationSerializationSchema[UserEvent](TypeInformation.of(classOf[UserEvent]), env.getConfig)
   }
 }
