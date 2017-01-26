@@ -9,7 +9,7 @@ import org.apache.flink.streaming.api.functions.source.SourceFunction.SourceCont
 import scala.util.Random
 
 class GeneratedEventsSource(private val maxInterval: Long,
-                            private val maxTimeDeviation: Long) extends RichParallelSourceFunction[UserEvent] {
+                            private val maxTimeDeviation: Long) extends RichParallelSourceFunction[Event] {
 
   @volatile private var isRunning = true
 
@@ -52,7 +52,7 @@ class GeneratedEventsSource(private val maxInterval: Long,
     .plusMillis((Random.nextDouble() * 2 * maxTimeDeviation - maxTimeDeviation).toLong)
     .toEpochMilli
 
-  override def run(ctx: SourceContext[UserEvent]): Unit = {
+  override def run(ctx: SourceContext[Event]): Unit = {
     while (isRunning) {
       val event = chooseEvent()
       ctx.collect(event)

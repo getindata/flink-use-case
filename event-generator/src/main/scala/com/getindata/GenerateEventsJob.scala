@@ -2,11 +2,11 @@ package com.getindata
 
 import java.util.Properties
 
-import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer09
-import org.apache.flink.streaming.util.serialization.TypeInformationSerializationSchema
+import org.apache.flink.streaming.util.serialization.SerializationSchema
 import org.rogach.scallop.ScallopConf
+import com.getindata.serialization._
 
 object GenerateEventsJob {
 
@@ -35,8 +35,8 @@ object GenerateEventsJob {
     val stream = env.addSource(new GeneratedEventsSource(conf.maxInterval(), conf.maxTimeDeviation()))
       .name("Event generator")
 
-    val serializationSchema = getSerializationSchema(env)
-    val kafkaProducer = new FlinkKafkaProducer09[UserEvent](conf.topic(),
+    val serializationSchema = getSerializationSchema
+    val kafkaProducer = new FlinkKafkaProducer09[Event](conf.topic(),
       serializationSchema,
       kafkaProperties(conf.kafkaBroker()))
 
@@ -45,7 +45,8 @@ object GenerateEventsJob {
     env.execute("Generate events")
   }
 
-  private def getSerializationSchema(env: StreamExecutionEnvironment) = {
-    new TypeInformationSerializationSchema[UserEvent](TypeInformation.of(classOf[UserEvent]), env.getConfig)
+
+  private def getSerializationSchema = {
+    new JsonEventSerializationSchema
   }
 }

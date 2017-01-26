@@ -3,7 +3,7 @@ package com.getindata
 import java.time.Duration
 import java.util.Properties
 
-import org.apache.flink.api.common.typeinfo.TypeInformation
+import com.getindata.serialization.JsonEventSerializationSchema
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.scala._
@@ -12,7 +12,6 @@ import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindow
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer09
-import org.apache.flink.streaming.util.serialization.TypeInformationSerializationSchema
 import org.apache.flink.util.Collector
 import org.rogach.scallop.ScallopConf
 
@@ -91,11 +90,9 @@ object FlinkProcessingJob {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
 
-    val deserializationSchema = new TypeInformationSerializationSchema(
-      TypeInformation.of(classOf[Event]), env.getConfig)
 
     val kafkaConsumer = new FlinkKafkaConsumer09[Event](conf.topic(),
-      deserializationSchema,
+      getSerializationSchema,
       kafkaProperties(conf.kafkaBroker()))
 
     kafkaConsumer.assignTimestampsAndWatermarks(watermakAssigner)
@@ -145,6 +142,10 @@ object FlinkProcessingJob {
       if (lastElement.isWatermark) {new Watermark(extractedTimestamp)} else {null}
 
     override def extractTimestamp(element: Event, previousElementTimestamp: Long) = element.timestamp
+  }
+
+  private def getSerializationSchema = {
+    new JsonEventSerializationSchema
   }
 
 }

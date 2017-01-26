@@ -11,7 +11,7 @@ services:
     environment:
       HOSTNAME_COMMAND: "route -n | awk '/UG[ \t]/{print $$2}'"
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_CREATE_TOPICS: "ClickStream:2:2"
+      KAFKA_CREATE_TOPICS: "songs:1:1,session-stats:1:1"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
   grafana:
