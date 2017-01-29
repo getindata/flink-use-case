@@ -1,9 +1,10 @@
 package com.getindata
 
-import java.time.Duration
+import java.time.{Duration, Instant}
 import java.util.Properties
 
 import com.getindata.serialization.JsonEventSerializationSchema
+import com.getindata.triggers.WithEarlyTriggeringTrigger
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.scala._
@@ -23,7 +24,12 @@ object FlinkProcessingJob {
   class Conf(args: Array[String]) extends ScallopConf(args) {
     val topic = opt[String](required = false, descr = "Kafka topic to read (default: songs)", default = Some("songs"))
     val kafkaBroker = trailArg[String](required = true, descr = "Kafka broker list")
-    val sessionGap = opt[Int](required = false, descr = "Maximal session inactivity in seconds (default: 20)", default = Some(20))
+    val triggerInterval = opt[Int](required = false,
+      descr = "Intervals in which to early trigger windows in seconds (default: 5).",
+      default = Some(5))
+    val sessionGap = opt[Int](required = false,
+      descr = "Maximal session inactivity in seconds (default: 20)",
+      default = Some(20))
 
     verify()
   }
@@ -102,15 +108,21 @@ object FlinkProcessingJob {
     //#1 Count session length in seconds and songs
 
     kafkaEvents.map(_ match {
-      case x: SongEvent => (x.userId, x.timestamp, x.timestamp, 1)
-      case x: SearchEvent => (x.userId, x.timestamp, x.timestamp, 0)
-    }).name("Change to tuple").keyBy(0)
+      case x: SongEvent => (x.userId, 1)
+      case x: SearchEvent => (x.userId, 0)
+    }).name("Change to tuple").keyBy(_._1)
       .window(EventTimeSessionWindows.withGap(Time.seconds(conf.sessionGap())))
-      .reduce((e1, e2) => (e1._1, math.min(e1._2, e2._2), math.max(e1._3, e2._3), e1._4 + e2._4))
+      .trigger(WithEarlyTriggeringTrigger.triggerEvery(Time.seconds(conf.triggerInterval())))
+      .apply((e1, e2) => (e1._1, e1._2 + e2._2),
+        (key, window, in, out: Collector[(String, Long, Long, Int)]) => {
+          out.collect((key, window.getStart, window.getEnd, in.map(_._2).sum))
+        })
       .name("Count sessions length")
       .map(e => s"User: ${e._1} session took ${
         Duration.ofMillis(e._3 - e._2).getSeconds
-      } seconds and ${e._4} songs.").print().name("Write to console")
+      } seconds and ${e._4} songs starting at ${Instant.ofEpochMilli(e._2)} and ending at " +
+        s"${Instant.ofEpochMilli(e._3)}.")
+      .print().name("Write to console")
 
     //#2 Count consecutive DiscoverWeekly session length in seconds and songs
 
