@@ -1,5 +1,7 @@
 package com.getindata;
 
+import com.getindata.subsession.SubSessionProcessor;
+import com.getindata.subsession.SubSessions;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.kafka.KafkaIO;
@@ -7,6 +9,7 @@ import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.transforms.GroupByKey;
 import org.apache.beam.sdk.transforms.MapElements;
+import org.apache.beam.sdk.transforms.SerializableFunction;
 import org.apache.beam.sdk.transforms.SimpleFunction;
 import org.apache.beam.sdk.transforms.windowing.Sessions;
 import org.apache.beam.sdk.transforms.windowing.Window;
@@ -14,7 +17,11 @@ import org.apache.beam.sdk.values.KV;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 public class BeamProcessingJob {
@@ -70,6 +77,36 @@ public class BeamProcessingJob {
 
         pipeline.run().waitUntilFinish();
     }
+
+    final SerializableFunction<KV<String, Iterable<UserEvent>>, Iterable<String>> countDiscoverWeekly = new
+            SimpleFunction<KV<String, Iterable<UserEvent>>, Iterable<String>>() {
+
+                @Override
+                public Iterable<String> apply(KV<String, Iterable<UserEvent>> input) {
+
+                    final List<String> messages = new ArrayList<>();
+                    final SubSessionProcessor processor = (events) -> {
+                        int size = events.size();
+                        final Stream<Long> timestamps = events.stream().map(UserEvent::timestamp);
+                        if (size > 0) {
+
+                        }
+                    };
+
+                    final Predicate<UserEvent> predicate = event -> {
+                        if (event instanceof SearchEvent)
+                            return true;
+
+                        if (!((SongEvent) event).playlistType().equals(PlaylistType.DiscoverWeekly()))
+                            return true;
+
+                        return false;
+                    };
+
+                    SubSessions.mapToSubSession(input.getValue(), predicate, processor);
+                    return messages;
+                }
+            };
 }
 
 
