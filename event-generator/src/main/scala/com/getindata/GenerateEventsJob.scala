@@ -11,12 +11,12 @@ import com.getindata.serialization._
 object GenerateEventsJob {
 
   class Conf(args: Array[String]) extends ScallopConf(args) {
-    val maxInterval = opt[Long](required = false, descr = "Maximal interval in millis between two consecutive events",
+    val maxInterval = opt[Long](required = false, descr = "Maximal interval in millis between two consecutive events (default: 1000)",
       default = Some(1000L))
-    val topic = opt[String](required = false, descr = "Kafka topic to write", default = Some("songs"))
+    val topic = opt[String](required = false, descr = "Kafka topic to write (default: songs)", default = Some("songs"))
     val kafkaBroker = trailArg[String](required = true, descr = "Kafka broker list")
     val maxTimeDeviation = opt[Long](required = false,
-      descr = "Maximal deviation from current time while assigning event timestamp",
+      descr = "Maximal deviation in millis from current time while assigning event timestamp (default 0)",
       default = Some(0L))
 
     verify()
