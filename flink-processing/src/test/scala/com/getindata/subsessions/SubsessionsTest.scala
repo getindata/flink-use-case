@@ -1,9 +1,9 @@
-package com.getindata
+package com.getindata.subsessions
 
+import com.getindata._
 import org.scalatest.{Matchers, WordSpec}
 
-class FlinkProcessingJobTest extends WordSpec with Matchers {
-
+class SubsessionsTest extends WordSpec with Matchers {
 
   class CollectorMock {
 
@@ -18,7 +18,7 @@ class FlinkProcessingJobTest extends WordSpec with Matchers {
   "mapToSubSession" should {
     "not produce any results for only search events" in {
       val mock = new CollectorMock
-      FlinkProcessingJob.mapToSubSession(Seq(SearchEvent(1L, "1", EventType.NextSong, DeviceType.Desktop)),
+      Subsessions.mapToSubSession(Seq(SearchEvent(1L, "1", EventType.NextSong, DeviceType.Desktop)),
         splitPredicate,
         mock.collect)
       mock.innerCollection should be(Seq())
@@ -26,7 +26,7 @@ class FlinkProcessingJobTest extends WordSpec with Matchers {
 
     "produce one subsession" in {
       val mock = new CollectorMock
-      FlinkProcessingJob.mapToSubSession(Seq(
+      Subsessions.mapToSubSession(Seq(
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "2"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "4"),
@@ -41,7 +41,7 @@ class FlinkProcessingJobTest extends WordSpec with Matchers {
 
     "produce subsession when starts with next" in {
       val mock = new CollectorMock
-      FlinkProcessingJob.mapToSubSession(Seq(
+      Subsessions.mapToSubSession(Seq(
         SearchEvent(1L, "1", EventType.NextSong, DeviceType.Desktop),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "2"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
@@ -56,7 +56,7 @@ class FlinkProcessingJobTest extends WordSpec with Matchers {
 
     "produce multiple subsession" in {
       val mock = new CollectorMock
-      FlinkProcessingJob.mapToSubSession(Seq(
+      Subsessions.mapToSubSession(Seq(
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "2"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
         SongEvent(1L, "1", EventType.EndSong, DeviceType.Desktop, PlaylistType.ChillHits, "3"),
