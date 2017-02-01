@@ -10,7 +10,7 @@ import org.apache.flink.streaming.api.windowing.triggers.{Trigger, TriggerResult
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 
 @SerialVersionUID(1L)
-class WithEarlyTriggeringTrigger(interval: Long) extends Trigger[Object, TimeWindow] {
+class EarlyTriggeringTrigger(interval: Long) extends Trigger[Object, TimeWindow] {
 
   private type JavaLong = java.lang.Long
 
@@ -98,10 +98,10 @@ class WithEarlyTriggeringTrigger(interval: Long) extends Trigger[Object, TimeWin
     }
   }
 
-  override def toString: String = s"WithEarlyTriggeringTrigger($interval)"
+  override def toString: String = s"EarlyTriggeringTrigger($interval)"
 }
 
 
-object WithEarlyTriggeringTrigger {
-  def triggerEvery(interval: Time) = new WithEarlyTriggeringTrigger(interval.toMilliseconds)
+object EarlyTriggeringTrigger {
+  def every(interval: Time) = new EarlyTriggeringTrigger(interval.toMilliseconds)
 }
