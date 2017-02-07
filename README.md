@@ -73,9 +73,19 @@ This module performs processing the use case requirements with flink as runtime.
 As a kafka broker in the docker environmet one can pass `kafka:9092`
 
 ```
-  -s, --session-gap  <arg>   Maximal session inactivity in seconds (default: 20)
-  -t, --topic  <arg>         Kafka topic to read (default: songs)
-      --help                 Show help message
+  -d, --discover-weekly
+      --nodiscover-weekly         disable processing consecutive discover weekly
+                                  events
+  -s, --session-gap  <arg>        Maximal session inactivity in seconds
+                                  (default: 20)
+      --session-stats
+      --nosession-stats           disable processing session stats
+      --subsession-stats
+      --nosubsession-stats        disable processing subsession stats
+  -t, --topic  <arg>              Kafka topic to read (default: songs)
+      --trigger-interval  <arg>   Intervals in which to early trigger windows in
+                                  seconds (default: 5).
+      --help                      Show help message
 
  trailing arguments:
   kafka-broker (required)   Kafka broker list
@@ -109,10 +119,17 @@ java -jar beam-processing-assembly-1.0.jar kafka:9092
 Arguments:
 
 ```
-  -s, --session-gap  <arg>   Maximal session inactivity in seconds (default: 20)
-  -t, --topic  <arg>         Kafka topic to read (default: songs)
-  -w, --write-topic  <arg>   Kafka topic to write (default: session-stats)
-      --help                 Show help message
+  -d, --discover-weekly-write-topic  <arg>   Kafka topic to write (default:
+                                             discover-weekly-stats)
+      --session-gap  <arg>                   Maximal session inactivity in
+                                             seconds (default: 20)
+  -s, --session-write-topic  <arg>           Kafka topic to write (default:
+                                             session-stats)
+      --subsession-write-topic  <arg>        Kafka topic to write (default:
+                                             subsession-stats)
+  -t, --topic  <arg>                         Kafka topic to read (default:
+                                             songs)
+      --help                                 Show help message
 
  trailing arguments:
   kafka-broker (required)   Kafka broker list
